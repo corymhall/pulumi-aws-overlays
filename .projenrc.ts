@@ -12,6 +12,7 @@ import {
 const project = new TypeScriptProject({
   defaultReleaseBranch: 'main',
   npmTrustedPublishing: true,
+  releaseToNpm: true,
   npmAccess: NpmAccess.PUBLIC,
   devDeps: [
     '@hallcor/pulumi-projen-project-types',
