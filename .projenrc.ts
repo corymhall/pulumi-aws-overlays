@@ -6,10 +6,13 @@ import {
 import { AiInstructions, Project, TextFile } from 'projen';
 import {
   NodePackageManager,
+  NpmAccess,
   UpgradeDependenciesSchedule,
 } from 'projen/lib/javascript';
 const project = new TypeScriptProject({
   defaultReleaseBranch: 'main',
+  npmTrustedPublishing: true,
+  npmAccess: NpmAccess.PUBLIC,
   devDeps: [
     '@hallcor/pulumi-projen-project-types',
     '@pulumi/pulumi',
