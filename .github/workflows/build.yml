@@ -20,7 +20,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
       - name: Install dependencies
-        run: yarn install --check-files
+        run: npm install
       - name: build
         run: npx projen build
       - name: Find mutations
@@ -48,12 +48,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     if: always() && needs.build.outputs.self_mutation_happened && !(github.event.pull_request.head.repo.full_name != github.repository)
     steps:
+      - id: esc
+        uses: pulumi/esc-action@v1
+        with:
+          environment: github/public
+          export-environment-variables: false
+          oidc-auth: true
+          oidc-organization: corymhall
+          oidc-requested-token-type: urn:pulumi:token-type:access_token:personal
+          oidc-scope: user:corymhall
+      - name: Generate token
+        id: generate_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ env.PROJEN_APP_CLIENT_ID }}
+          private-key: ${{ env.PROJEN_APP_PRIVATE_KEY }}
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          token: ${{ secrets.PROJEN_GITHUB_TOKEN }}
+          token: ${{ steps.generate_token.outputs.token }}
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
       - name: Download patch

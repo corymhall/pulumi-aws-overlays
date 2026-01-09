@@ -4,7 +4,7 @@ name: upgrade-main
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: 0 0 * * *
+    - cron: 0 0 * * 1
 jobs:
   upgrade:
     name: Upgrade
@@ -19,7 +19,7 @@ jobs:
         with:
           ref: main
       - name: Install dependencies
-        run: yarn install --check-files --frozen-lockfile
+        run: npm ci
       - name: Upgrade dependencies
         run: npx projen upgrade
       - name: Find mutations
@@ -42,8 +42,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     if: ${{ needs.upgrade.outputs.patch_created }}
     steps:
+      - id: esc
+        uses: pulumi/esc-action@v1
+        with:
+          environment: github/public
+          export-environment-variables: false
+          oidc-auth: true
+          oidc-organization: corymhall
+          oidc-requested-token-type: urn:pulumi:token-type:access_token:personal
+          oidc-scope: user:corymhall
+      - name: Generate token
+        id: generate_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ env.PROJEN_APP_CLIENT_ID }}
+          private-key: ${{ env.PROJEN_APP_PRIVATE_KEY }}
       - name: Checkout
         uses: actions/checkout@v5
         with:
@@ -63,7 +79,7 @@ jobs:
         id: create-pr
         uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{ secrets.PROJEN_GITHUB_TOKEN }}
+          token: ${{ steps.generate_token.outputs.token }}
           commit-message: |-
             chore(deps): upgrade dependencies
 
@@ -76,6 +92,7 @@ jobs:
             *Automatically created by projen via the "upgrade-main" workflow*
           branch: github-actions/upgrade-main
           title: "chore(deps): upgrade dependencies"
+          labels: auto-approve
           body: |-
             Upgrades project dependencies. See details in [workflow run].
 
