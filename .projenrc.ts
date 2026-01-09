@@ -11,6 +11,9 @@ import {
 } from 'projen/lib/javascript';
 const project = new TypeScriptProject({
   defaultReleaseBranch: 'main',
+  repository: 'https://github.com/corymhall/pulumi-aws-overlays',
+  authorEmail: '43035978+corymhall@users.noreply.github.com',
+  authorName: 'corymhall',
   npmTrustedPublishing: true,
   releaseToNpm: true,
   npmAccess: NpmAccess.PUBLIC,

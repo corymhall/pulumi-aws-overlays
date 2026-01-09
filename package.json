@@ -1,6 +1,10 @@
 {
   "name": "@hallcor/pulumi-aws-overlays",
   "description": "Overlay library for @pulumi/aws with convenience methods for event subscriptions",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/corymhall/pulumi-aws-overlays"
+  },
   "scripts": {
     "build": "npx projen build",
     "bump": "npx projen bump",
@@ -20,6 +24,11 @@
     "upgrade": "npx projen upgrade",
     "watch": "npx projen watch",
     "projen": "npx projen"
+  },
+  "author": {
+    "name": "corymhall",
+    "email": "43035978+corymhall@users.noreply.github.com",
+    "organization": false
   },
   "devDependencies": {
     "@hallcor/pulumi-projen-project-types": "^0.0.64",
