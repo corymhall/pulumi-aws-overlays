@@ -17,6 +17,33 @@ import * as pulumi from '@pulumi/pulumi';
 
 import * as utils from '../utils';
 
+// S3 permission action sets for grant methods
+// These match AWS CDK's modern (non-legacy) permission sets
+const S3_READ_ACTIONS = ['s3:GetObject*', 's3:GetBucket*', 's3:List*'];
+const S3_PUT_ACTIONS = [
+  's3:PutObject',
+  's3:PutObjectLegalHold',
+  's3:PutObjectRetention',
+  's3:PutObjectTagging',
+  's3:PutObjectVersionTagging',
+  's3:Abort*',
+];
+const S3_DELETE_ACTIONS = ['s3:DeleteObject*'];
+const S3_WRITE_ACTIONS = [...S3_DELETE_ACTIONS, ...S3_PUT_ACTIONS];
+const S3_PUT_ACL_ACTIONS = ['s3:PutObjectAcl', 's3:PutObjectVersionAcl'];
+
+/**
+ * Arguments for bucket grant methods.
+ */
+export interface BucketGrantArgs {
+  /**
+   * Optional key pattern to restrict permissions to specific objects.
+   * Defaults to '*' (all objects).
+   * Examples: 'uploads/*', 'data/*.json', 'prefix/*'
+   */
+  objectsKeyPattern?: string;
+}
+
 /**
  * Arguments to help customize a notification subscription for a bucket.
  */
@@ -229,6 +256,86 @@ process.on('beforeExit', () => {
   }
 });
 
+/**
+ * Creates an IAM RolePolicy granting specified S3 actions on a bucket.
+ * @internal
+ */
+function createBucketGrant(
+  bucket: aws.s3.Bucket,
+  name: string,
+  role: aws.iam.Role,
+  actions: string[],
+  objectsKeyPattern: string,
+  opts?: pulumi.ResourceOptions,
+): aws.iam.RolePolicy {
+  // Separate bucket-level and object-level actions
+  const bucketLevelActions = actions.filter(
+    (a) => a.startsWith('s3:GetBucket') || a.startsWith('s3:List'),
+  );
+  const objectLevelActions = actions.filter(
+    (a) => !a.startsWith('s3:GetBucket') && !a.startsWith('s3:List'),
+  );
+
+  // Build the resource ARNs
+  const bucketArn = bucket.arn;
+  const objectsArn = pulumi.interpolate`${bucketArn}/${objectsKeyPattern}`;
+
+  // Build policy statements
+  type PolicyStatement = {
+    Effect: string;
+    Action: string[];
+    Resource: pulumi.Input<string>;
+  };
+  const statements: PolicyStatement[] = [];
+
+  if (bucketLevelActions.length > 0) {
+    statements.push({
+      Effect: 'Allow',
+      Action: bucketLevelActions,
+      Resource: bucketArn,
+    });
+  }
+
+  if (objectLevelActions.length > 0) {
+    statements.push({
+      Effect: 'Allow',
+      Action: objectLevelActions,
+      Resource: objectsArn,
+    });
+  }
+
+  // Create the policy document
+  const policyDocument = pulumi
+    .all(statements.map((s) => pulumi.output(s.Resource)))
+    .apply((resources) =>
+      JSON.stringify({
+        Version: '2012-10-17',
+        Statement: statements.map((s, i) => ({
+          Effect: s.Effect,
+          Action: s.Action,
+          Resource: resources[i],
+        })),
+      }),
+    );
+
+  // TODO: Add KMS permissions when bucket uses KMS encryption
+  // This would require detecting the bucket's encryption configuration
+  // and adding kms:Decrypt, kms:DescribeKey for read operations
+  // and kms:Encrypt, kms:ReEncrypt*, kms:GenerateDataKey* for write operations
+
+  return new aws.iam.RolePolicy(
+    name,
+    {
+      role: role.name,
+      policy: policyDocument,
+    },
+    {
+      parent: bucket,
+      ...opts,
+    },
+  );
+}
+
 // Mixin event handling functionality onto Bucket.
 declare module '@pulumi/aws/s3/bucket' {
   interface Bucket {
@@ -268,6 +375,116 @@ declare module '@pulumi/aws/s3/bucket' {
       args: BucketEventSubscriptionArgs,
       opts?: pulumi.ComponentResourceOptions,
     ): BucketEventSubscription;
+
+    /**
+     * Grant read permissions to the given IAM role.
+     * Includes: s3:GetObject*, s3:GetBucket*, s3:List*
+     *
+     * @param name - Unique name for the RolePolicy resource
+     * @param role - The IAM role to grant permissions to
+     * @param args - Optional arguments including key pattern filter
+     * @param opts - Optional Pulumi resource options
+     * @returns The created RolePolicy resource
+     */
+    grantRead(
+      name: string,
+      role: aws.iam.Role,
+      args?: BucketGrantArgs,
+      opts?: pulumi.ResourceOptions,
+    ): aws.iam.RolePolicy;
+
+    /**
+     * Grant write permissions to the given IAM role.
+     * Includes: s3:DeleteObject*, s3:PutObject, s3:PutObjectLegalHold,
+     * s3:PutObjectRetention, s3:PutObjectTagging, s3:PutObjectVersionTagging, s3:Abort*
+     *
+     * Note: This does not include ACL permissions. Use grantPutAcl if needed.
+     *
+     * @param name - Unique name for the RolePolicy resource
+     * @param role - The IAM role to grant permissions to
+     * @param args - Optional arguments including key pattern filter
+     * @param opts - Optional Pulumi resource options
+     * @returns The created RolePolicy resource
+     */
+    grantWrite(
+      name: string,
+      role: aws.iam.Role,
+      args?: BucketGrantArgs,
+      opts?: pulumi.ResourceOptions,
+    ): aws.iam.RolePolicy;
+
+    /**
+     * Grant put permissions to the given IAM role (write without delete).
+     * Includes: s3:PutObject, s3:PutObjectLegalHold, s3:PutObjectRetention,
+     * s3:PutObjectTagging, s3:PutObjectVersionTagging, s3:Abort*
+     *
+     * Note: This does not include ACL permissions. Use grantPutAcl if needed.
+     *
+     * @param name - Unique name for the RolePolicy resource
+     * @param role - The IAM role to grant permissions to
+     * @param args - Optional arguments including key pattern filter
+     * @param opts - Optional Pulumi resource options
+     * @returns The created RolePolicy resource
+     */
+    grantPut(
+      name: string,
+      role: aws.iam.Role,
+      args?: BucketGrantArgs,
+      opts?: pulumi.ResourceOptions,
+    ): aws.iam.RolePolicy;
+
+    /**
+     * Grant delete permissions to the given IAM role.
+     * Includes: s3:DeleteObject*
+     *
+     * @param name - Unique name for the RolePolicy resource
+     * @param role - The IAM role to grant permissions to
+     * @param args - Optional arguments including key pattern filter
+     * @param opts - Optional Pulumi resource options
+     * @returns The created RolePolicy resource
+     */
+    grantDelete(
+      name: string,
+      role: aws.iam.Role,
+      args?: BucketGrantArgs,
+      opts?: pulumi.ResourceOptions,
+    ): aws.iam.RolePolicy;
+
+    /**
+     * Grant ACL put permissions to the given IAM role.
+     * Includes: s3:PutObjectAcl, s3:PutObjectVersionAcl
+     *
+     * If you need to grant write permissions without ACL access, use grantWrite.
+     *
+     * @param name - Unique name for the RolePolicy resource
+     * @param role - The IAM role to grant permissions to
+     * @param args - Optional arguments including key pattern filter
+     * @param opts - Optional Pulumi resource options
+     * @returns The created RolePolicy resource
+     */
+    grantPutAcl(
+      name: string,
+      role: aws.iam.Role,
+      args?: BucketGrantArgs,
+      opts?: pulumi.ResourceOptions,
+    ): aws.iam.RolePolicy;
+
+    /**
+     * Grant read and write permissions to the given IAM role.
+     * Combines grantRead and grantWrite permissions.
+     *
+     * @param name - Unique name for the RolePolicy resource
+     * @param role - The IAM role to grant permissions to
+     * @param args - Optional arguments including key pattern filter
+     * @param opts - Optional Pulumi resource options
+     * @returns The created RolePolicy resource
+     */
+    grantReadWrite(
+      name: string,
+      role: aws.iam.Role,
+      args?: BucketGrantArgs,
+      opts?: pulumi.ResourceOptions,
+    ): aws.iam.RolePolicy;
   }
 }
 
@@ -317,4 +534,92 @@ aws.s3.Bucket.prototype.onEvent = function (
   opts,
 ) {
   return new BucketEventSubscription(name, this, handler, args, opts);
+};
+
+aws.s3.Bucket.prototype.grantRead = function (
+  this: aws.s3.Bucket,
+  name: string,
+  role: aws.iam.Role,
+  args?: BucketGrantArgs,
+  opts?: pulumi.ResourceOptions,
+): aws.iam.RolePolicy {
+  const keyPattern = args?.objectsKeyPattern ?? '*';
+  return createBucketGrant(this, name, role, S3_READ_ACTIONS, keyPattern, opts);
+};
+
+aws.s3.Bucket.prototype.grantWrite = function (
+  this: aws.s3.Bucket,
+  name: string,
+  role: aws.iam.Role,
+  args?: BucketGrantArgs,
+  opts?: pulumi.ResourceOptions,
+): aws.iam.RolePolicy {
+  const keyPattern = args?.objectsKeyPattern ?? '*';
+  return createBucketGrant(
+    this,
+    name,
+    role,
+    S3_WRITE_ACTIONS,
+    keyPattern,
+    opts,
+  );
+};
+
+aws.s3.Bucket.prototype.grantPut = function (
+  this: aws.s3.Bucket,
+  name: string,
+  role: aws.iam.Role,
+  args?: BucketGrantArgs,
+  opts?: pulumi.ResourceOptions,
+): aws.iam.RolePolicy {
+  const keyPattern = args?.objectsKeyPattern ?? '*';
+  return createBucketGrant(this, name, role, S3_PUT_ACTIONS, keyPattern, opts);
+};
+
+aws.s3.Bucket.prototype.grantDelete = function (
+  this: aws.s3.Bucket,
+  name: string,
+  role: aws.iam.Role,
+  args?: BucketGrantArgs,
+  opts?: pulumi.ResourceOptions,
+): aws.iam.RolePolicy {
+  const keyPattern = args?.objectsKeyPattern ?? '*';
+  return createBucketGrant(
+    this,
+    name,
+    role,
+    S3_DELETE_ACTIONS,
+    keyPattern,
+    opts,
+  );
+};
+
+aws.s3.Bucket.prototype.grantPutAcl = function (
+  this: aws.s3.Bucket,
+  name: string,
+  role: aws.iam.Role,
+  args?: BucketGrantArgs,
+  opts?: pulumi.ResourceOptions,
+): aws.iam.RolePolicy {
+  const keyPattern = args?.objectsKeyPattern ?? '*';
+  return createBucketGrant(
+    this,
+    name,
+    role,
+    S3_PUT_ACL_ACTIONS,
+    keyPattern,
+    opts,
+  );
+};
+
+aws.s3.Bucket.prototype.grantReadWrite = function (
+  this: aws.s3.Bucket,
+  name: string,
+  role: aws.iam.Role,
+  args?: BucketGrantArgs,
+  opts?: pulumi.ResourceOptions,
+): aws.iam.RolePolicy {
+  const keyPattern = args?.objectsKeyPattern ?? '*';
+  const allActions = [...S3_READ_ACTIONS, ...S3_WRITE_ACTIONS];
+  return createBucketGrant(this, name, role, allActions, keyPattern, opts);
 };

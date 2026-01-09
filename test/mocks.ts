@@ -72,6 +72,24 @@ export function setMocks(resources?: MockResourceArgs[]) {
               id,
             },
           };
+        case 'aws:iam/role:Role':
+          return {
+            id,
+            state: {
+              ...args.inputs,
+              id,
+              arn: `arn:aws:iam::123456789012:role/${args.name}`,
+              name: args.name,
+            },
+          };
+        case 'aws:iam/rolePolicy:RolePolicy':
+          return {
+            id,
+            state: {
+              ...args.inputs,
+              id,
+            },
+          };
         default:
           return {
             id,
