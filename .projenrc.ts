@@ -10,7 +10,6 @@ import {
 } from 'projen/lib/javascript';
 const project = new TypeScriptProject({
   defaultReleaseBranch: 'main',
-  release: false,
   devDeps: [
     '@hallcor/pulumi-projen-project-types',
     '@pulumi/pulumi',
