@@ -1,5 +1,6 @@
 {
   "name": "@hallcor/pulumi-aws-overlays",
+  "description": "Overlay library for @pulumi/aws with convenience methods for event subscriptions",
   "scripts": {
     "build": "npx projen build",
     "clobber": "npx projen clobber",
@@ -19,6 +20,8 @@
   },
   "devDependencies": {
     "@hallcor/pulumi-projen-project-types": "^0.0.64",
+    "@pulumi/aws": "7.15.0",
+    "@pulumi/pulumi": "3.215.0",
     "@swc/core": "^1.15.8",
     "@swc/jest": "^0.2.39",
     "@types/jest": "^30.0.0",
@@ -38,6 +41,10 @@
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@pulumi/aws": "^7.15.0",
+    "@pulumi/pulumi": "^3.215.0"
   },
   "main": "lib/index.js",
   "license": "Apache-2.0",

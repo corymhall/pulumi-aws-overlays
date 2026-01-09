@@ -11,8 +11,15 @@ import {
 const project = new TypeScriptProject({
   defaultReleaseBranch: 'main',
   release: false,
-  devDeps: ['@hallcor/pulumi-projen-project-types'],
+  devDeps: [
+    '@hallcor/pulumi-projen-project-types',
+    '@pulumi/pulumi',
+    '@pulumi/aws',
+  ],
+  peerDeps: ['@pulumi/pulumi', '@pulumi/aws'],
   name: '@hallcor/pulumi-aws-overlays',
+  description:
+    'Overlay library for @pulumi/aws with convenience methods for event subscriptions',
   projenrcTs: true,
   packageManager: NodePackageManager.NPM,
   depsUpgradeOptions: {
@@ -32,10 +39,6 @@ const project = new TypeScriptProject({
       organization: 'corymhall',
     }),
   }),
-
-  // deps: [],                /* Runtime dependencies of this module. */
-  // description: undefined,  /* The description is just a string that helps people understand the purpose of the package. */
-  // packageName: undefined,  /* The "name" in package.json. */
 });
 
 const projenProject = Project.of(project);
